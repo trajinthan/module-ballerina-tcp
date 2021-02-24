@@ -4,3 +4,5 @@ fixes:
 codecov:
   require_ci_to_pass: no
 
+ignore:
+  - "ballerina/tcp/testutils"
