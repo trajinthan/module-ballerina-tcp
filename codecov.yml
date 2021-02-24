@@ -6,3 +6,4 @@ codecov:
 
 ignore:
   - "tcp-test-utils"
+  - "tcp-ballerina/tests"
