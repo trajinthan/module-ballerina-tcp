@@ -1,7 +1,7 @@
 import ballerina/test;
 import ballerina/io;
 
-@test:Config {dependsOn: [testSecureClientEcho]}
+@test:Config {dependsOn: [testSecureClientEcho], enable: false}
 function testSecureListenerWithSecureClient() returns @tainted error? {
     Client socketClient = check new ("localhost", PORT4, secureSocket = {
         certificate: {path: certPath},
@@ -17,12 +17,12 @@ function testSecureListenerWithSecureClient() returns @tainted error? {
     check socketClient->writeBytes(msgByteArray);
 
     readonly & byte[] receivedData = check socketClient->readBytes();
-    test:assertEquals(check getString(receivedData), msg, "Found unexpected output");
+    test:assertEquals('string:fromBytes(receivedData), msg, "Found unexpected output");
 
     check socketClient->close();
 }
 
-@test:Config {dependsOn: [testSecureListenerWithSecureClient]}
+@test:Config {dependsOn: [testSecureListenerWithSecureClient], enable: false }
 function testSecureListenerWithClient() returns @tainted error? {
     Client socketClient = check new ("localhost", PORT4);
 

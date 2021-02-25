@@ -20,6 +20,7 @@ plugins {
     id "com.github.johnrengelman.shadow" version "${githubJohnrengelmanShadowVersion}"
     id "de.undercouch.download" version "${underCouchDownloadVersion}"
     id "net.researchgate.release" version "${researchgateReleaseVersion}"
+    id 'jacoco'
 }
 
 allprojects {
@@ -81,13 +82,11 @@ subprojects {
     }
 }
 
-def moduleVersion = project.version
-if (moduleVersion.indexOf('-') != -1) {
-    moduleVersion = moduleVersion.substring(0, moduleVersion.indexOf('-'))
-}
+def moduleVersion = project.version.replace("-SNAPSHOT", "")   
 
 release {
     failOnPublishNeeded = false
+    failOnSnapshotDependencies = true
 
     buildTasks = ['build']
     versionPropertyFile = 'gradle.properties'
@@ -104,7 +103,11 @@ task build {
 }
 
 task codeCoverageReport(type: JacocoReport) {
-    executionData fileTree(project.rootDir.absolutePath).include("**/build/coverage-reports/*.exec")
+    dependsOn('tcp-native:copyJavaClassFiles')
+    dependsOn('tcp-ballerina:extractBallerinaClassFiles')
+
+    executionData fileTree(project.rootDir.absolutePath).include("**/target/cache/tests_cache/coverage/ballerina.exec")
+    additionalClassDirs files("${buildDir}/classes")
 
     subprojects.each {
         sourceSets it.sourceSets.main
@@ -113,10 +116,8 @@ task codeCoverageReport(type: JacocoReport) {
     reports {
         xml.enabled = true
         html.enabled = true
-        csv.enabled = true
         xml.destination = new File("${buildDir}/reports/jacoco/report.xml")
         html.destination = new File("${buildDir}/reports/jacoco/report.html")
-        csv.destination = new File("${buildDir}/reports/jacoco/report.csv")
     }
 
     onlyIf = {

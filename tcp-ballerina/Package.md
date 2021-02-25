@@ -1,6 +1,6 @@
-## Module Overview
+## Package Overview
 
-This module provides an implementation for sending/receiving messages to/from another application process (local or remote) for both connection-oriented protocols.
+This package provides an implementation for sending/receiving messages to/from another application process (local or remote) for both connection-oriented protocols.
 
 #### Client
 
@@ -11,24 +11,28 @@ A Client can be defined by providing the `remoteHost` and the `remotePort`.
 A simple Client code as follows.
 
 ```ballerina
-tcp:Client socketClient = check new ("localhost", 3000);
+import ballerina/tcp;
 
-string msg = "Hello Ballerina";
-byte[] msgByteArray = msg.toBytes();
-check  socketClient->writeBytes(msgByteArray);
+public function main() returns error? {
+    tcp:Client socketClient = check new ("localhost", 3000);
 
-readonly & byte[] receivedData = check socketClient->readBytes();
+    string msg = "Hello Ballerina";
+    byte[] msgByteArray = msg.toBytes();
+    check  socketClient->writeBytes(msgByteArray);
 
-check socketClient->close();
+    readonly & byte[] receivedData = check socketClient->readBytes();
+
+    check socketClient->close();
+}
 ```
 
 #### Listener
 The `tcp:Listener` is used to listen to the incoming socket request. The `onConnect(tcp:Caller)` remote method gets invoked when a new client is connected. The new client is represented using the `tcp:Caller`. The `onConnect(tcp:Caller)` method may return `tcp:ConnectionService|tcp:Error`.
 
-The `tcp:ConnectionService` can have following remote methods</br>
-`onBytes(readonly & byte[] data)` - This remote method is invoked once the content is received from the client.</br>
-`onError(readonly & tcp:Error err)` - This remote method is invoked in an error situation.</br>
-`onClose()` - This remote method is invoked when the connection is closed.</br>
+The `tcp:ConnectionService` can have following remote methods<br/>
+`onBytes(readonly & byte[] data)` - This remote method is invoked once the content is received from the client.<br/>
+`onError(readonly & tcp:Error err)` - This remote method is invoked in an error situation.<br/>
+`onClose()` - This remote method is invoked when the connection is closed.<br/>
 
 A `tcp:Listener` can be defined as follows:
 ```ballerina
@@ -59,6 +63,6 @@ service class EchoService {
 }
 ```
 
-For information on the operations, which you can perform with this module, see the below **Functions**. For examples on the usage of the operations, see the following.
+For information on the operations, which you can perform with this package, see the below **Functions**. For examples on the usage of the operations, see the following.
  * [Basic TCP Client Example](https://ballerina.io/learn/by-example/tcp-client.html)
  * [Basic TCP Listener Example](https://ballerina.io/learn/by-example/tcp-listener.html)

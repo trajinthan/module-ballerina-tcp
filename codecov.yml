@@ -1,0 +1,7 @@
+fixes:
+  - "ballerina/tcp/*/::tcp-ballerina/"
+
+ignore:
+  - "tcp-test-utils"
+  - "tcp-ballerina/tests"
+  

@@ -35,12 +35,9 @@ import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.SslHandler;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.security.GeneralSecurityException;
-import java.security.KeyStore;
-
-import javax.net.ssl.KeyManagerFactory;
 
 /**
  * {@link TcpListener} creates the tcp client and handles all the network operations.
@@ -53,7 +50,7 @@ public class TcpListener {
     private final ServerBootstrap listenerBootstrap;
 
     public TcpListener(InetSocketAddress localAddress, EventLoopGroup bossGroup, EventLoopGroup workerGroup,
-                       Future callback, TcpService tcpService, BMap<BString, Object> secureSocket) throws Exception {
+                       Future callback, TcpService tcpService, BMap<BString, Object> secureSocket) {
         this.bossGroup = bossGroup;
         this.workerGroup = workerGroup;
         listenerBootstrap = new ServerBootstrap();
@@ -76,7 +73,7 @@ public class TcpListener {
                         ctx.close();
                     }
                 })
-                .bind(localAddress).sync()
+                .bind(localAddress)
                 .addListener((ChannelFutureListener) channelFuture -> {
                     if (channelFuture.isSuccess()) {
                         channel = channelFuture.channel();
@@ -88,7 +85,7 @@ public class TcpListener {
     }
 
     private void setSSLHandler(SocketChannel channel, BMap<BString, Object> secureSocket,
-                               TcpListenerHandler tcpListenerHandler) throws GeneralSecurityException, IOException {
+                               TcpListenerHandler tcpListenerHandler) throws IOException {
         BMap<BString, Object> certificate = (BMap<BString, Object>) secureSocket.getMapValue(StringUtils
                 .fromString(Constants.CERTIFICATE));
         BMap<BString, Object> privateKey = (BMap<BString, Object>) secureSocket.getMapValue(StringUtils
@@ -99,35 +96,35 @@ public class TcpListener {
                 fromString(Constants.PROTOCOL_VERSIONS)).getStringArray();
         String[] ciphers = secureSocket.getArrayValue(StringUtils.fromString(Constants.CIPHERS)).getStringArray();
 
-        KeyStore ks = SecureSocketUtils.keystore(certificate == null ? "" : certificate
-                        .getStringValue(StringUtils.fromString(Constants.CERTIFICATE_PATH)).getValue(),
-                privateKey == null ? "" : privateKey
-                        .getStringValue(StringUtils.fromString(Constants.PRIVATE_KEY_PATH)).getValue());
-        KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-        kmf.init(ks, Constants.KEY_STORE_PASSWORD.toCharArray());
-        SslContext sslContext = SslContextBuilder.forServer(kmf).build();
+        SslContext sslContext = SslContextBuilder.forServer(
+                new File(certificate.getStringValue(StringUtils.fromString(Constants.CERTIFICATE_PATH)).getValue()),
+                new File(privateKey.getStringValue(StringUtils.fromString(Constants.PRIVATE_KEY_PATH)).getValue()))
+                .build();
 
         SslHandler sslHandler = sslContext.newHandler(channel.alloc());
+
         if (protocolVersions.length > 0) {
             sslHandler.engine().setEnabledProtocols(protocolVersions);
         }
         if (ciphers != null && ciphers.length > 0) {
             sslHandler.engine().setEnabledCipherSuites(ciphers);
         }
+
         channel.pipeline().addFirst(Constants.SSL_HANDLER, sslHandler);
-        channel.pipeline().addLast(Constants.SSL_HANDSHAKE_HANDLER, new SslHandshakeEventHandler(tcpListenerHandler));
+        channel.pipeline().addLast(Constants.SSL_HANDSHAKE_HANDLER,
+                new SslHandshakeListenerEventHandler(tcpListenerHandler));
     }
 
     // Invoke when the caller call writeBytes
     public static void send(byte[] bytes, Channel channel, Future callback, TcpService tcpService) {
         if (!tcpService.getIsCallerClosed() && channel.isActive()) {
-            channel.writeAndFlush(Unpooled.wrappedBuffer(bytes)).addListener((ChannelFutureListener) future -> {
-                if (future.isSuccess()) {
-                    callback.complete(null);
-                } else {
-                    callback.complete(Utils.createSocketError("Failed to send data."));
-                }
-            });
+            WriteFlowController writeFlowController = new WriteFlowController(Unpooled.wrappedBuffer(bytes), callback);
+            TcpListenerHandler tcpListenerHandler = (TcpListenerHandler) channel.pipeline()
+                    .get(Constants.LISTENER_HANDLER);
+            tcpListenerHandler.addWriteFlowControl(writeFlowController);
+            if (channel.isWritable()) {
+                writeFlowController.writeData(channel, tcpListenerHandler.getWriteFlowControllers());
+            }
         } else {
             callback.complete(Utils.createSocketError("Socket connection already closed."));
         }
@@ -136,11 +133,14 @@ public class TcpListener {
     // Invoke when the listener onBytes return readonly & byte[]
     public static void send(byte[] bytes, Channel channel, TcpService tcpService) {
         if (!tcpService.getIsCallerClosed() && channel.isActive()) {
-            channel.writeAndFlush(Unpooled.wrappedBuffer(bytes)).addListener((ChannelFutureListener) future -> {
-                if (!future.isSuccess()) {
-                    Dispatcher.invokeOnError(tcpService, "Failed to send data.");
-                }
-            });
+            WriteFlowController writeFlowController = new WriteFlowControllerService(Unpooled.wrappedBuffer(bytes),
+                    tcpService);
+            TcpListenerHandler tcpListenerHandler = (TcpListenerHandler) channel
+                    .pipeline().get(Constants.LISTENER_HANDLER);
+            tcpListenerHandler.addWriteFlowControl(writeFlowController);
+            if (channel.isWritable()) {
+                writeFlowController.writeData(channel, tcpListenerHandler.getWriteFlowControllers());
+            }
         } else {
             Dispatcher.invokeOnError(tcpService, "Socket connection already closed.");
         }
@@ -157,9 +157,9 @@ public class TcpListener {
     }
 
     // Close caller
-    public static void close(Channel channel, Future callback) throws Exception {
+    public static void close(Channel channel, Future callback) {
         if (channel != null) {
-            channel.close().sync().addListener((ChannelFutureListener) future -> {
+            channel.close().addListener((ChannelFutureListener) future -> {
                 if (future.isSuccess()) {
                     callback.complete(null);
                 } else {
@@ -170,8 +170,8 @@ public class TcpListener {
     }
 
     // Shutdown the server
-    public void close(Future callback) throws InterruptedException {
-        channel.close().sync().addListener((ChannelFutureListener) future -> {
+    public void close(Future callback) {
+        channel.close().addListener((ChannelFutureListener) future -> {
             if (future.isSuccess()) {
                 callback.complete(null);
             } else {
