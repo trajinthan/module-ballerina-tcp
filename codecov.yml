@@ -4,3 +4,6 @@ fixes:
 ignore:
   - "tcp-test-utils"
   - "tcp-ballerina/tests"
+
+codecov:
+  require_ci_to_pass: no
